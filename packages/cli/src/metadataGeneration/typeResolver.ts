@@ -56,9 +56,8 @@ export class TypeResolver {
     }
 
     if (ts.isUnionTypeNode(this.typeNode)) {
-      const types = this.typeNode.types.map(type => {
-        return new TypeResolver(type, this.current, this.parentNode, this.context).resolve();
-      });
+      const types = this.typeNode.types
+        .map(type => new TypeResolver(type, this.current, this.parentNode, this.context).resolve());
 
       const unionMetaType: Tsoa.UnionType = {
         dataType: 'union',
@@ -68,9 +67,8 @@ export class TypeResolver {
     }
 
     if (ts.isIntersectionTypeNode(this.typeNode)) {
-      const types = this.typeNode.types.map(type => {
-        return new TypeResolver(type, this.current, this.parentNode, this.context).resolve();
-      });
+      const types = this.typeNode.types
+        .map(type => new TypeResolver(type, this.current, this.parentNode, this.context).resolve());
 
       const intersectionMetaType: Tsoa.IntersectionType = {
         dataType: 'intersection',
@@ -588,9 +586,7 @@ export class TypeResolver {
     /**
      * Model is marked with '@tsoaModel', indicating that it should be the 'canonical' model used
      */
-    const designatedNodes = nodes.filter(enumNode => {
-      return isExistJSDocTag(enumNode, tag => tag.tagName.text === 'tsoaModel');
-    });
+    const designatedNodes = nodes.filter(enumNode => isExistJSDocTag(enumNode, tag => tag.tagName.text === 'tsoaModel'));
     if (designatedNodes.length > 0) {
       if (designatedNodes.length > 1) {
         throw new GenerateMetadataError(`Multiple models for ${typeName} marked with '@tsoaModel'; '@tsoaModel' should only be applied to one model.`);
@@ -606,9 +602,7 @@ export class TypeResolver {
   }
 
   private getEnumerateType(enumDeclaration: ts.EnumDeclaration, enumName: string): Tsoa.RefEnumType {
-    const isNotUndefined = <T>(item: T): item is Exclude<T, undefined> => {
-      return item === undefined ? false : true;
-    };
+    const isNotUndefined = <T>(item: T): item is Exclude<T, undefined> => item !== undefined;
 
     const enums = enumDeclaration.members.map(e => this.current.typeChecker.getConstantValue(e)).filter(isNotUndefined);
     const enumVarnames = enumDeclaration.members.map(e => e.name.getText()).filter(isNotUndefined);
@@ -1205,7 +1199,7 @@ export class TypeResolver {
     const classConstructor = node.members.find(member => ts.isConstructorDeclaration(member)) as ts.ConstructorDeclaration;
 
     if (classConstructor && classConstructor.parameters) {
-      const constructorProperties = classConstructor.parameters.filter(parameter => this.isAccessibleParameter(parameter));
+      const constructorProperties = classConstructor.parameters.filter(this.isAccessibleParameter);
 
       properties.push(...constructorProperties);
     }
