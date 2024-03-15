@@ -404,50 +404,11 @@ export class TypeResolver {
       return new TypeResolver(this.typeNode.type, this.current, this.typeNode, this.context, this.referencer).resolve();
     }
 
-    if (this.typeNode.kind !== ts.SyntaxKind.TypeReference) {
-      throw new GenerateMetadataError(`Unknown type: ${ts.SyntaxKind[this.typeNode.kind]}`, this.typeNode);
+    if (ts.isTypeReferenceNode(this.typeNode)) {
+      return this.resolveTypeReferencedNode(this.typeNode);
     }
 
-    const typeReference = this.typeNode as ts.TypeReferenceNode;
-    if (typeReference.typeName.kind === ts.SyntaxKind.Identifier) {
-      if (typeReference.typeName.text === 'Date') {
-        return this.getDateType(this.parentNode);
-      }
-
-      if (typeReference.typeName.text === 'Buffer') {
-        const bufferMetaType: Tsoa.BufferType = { dataType: 'buffer' };
-        return bufferMetaType;
-      }
-
-      if (typeReference.typeName.text === 'Readable') {
-        const streamMetaType: Tsoa.BufferType = { dataType: 'buffer' };
-        return streamMetaType;
-      }
-
-      if (typeReference.typeName.text === 'Array' && typeReference.typeArguments && typeReference.typeArguments.length === 1) {
-        const arrayMetaType: Tsoa.ArrayType = {
-          dataType: 'array',
-          elementType: new TypeResolver(typeReference.typeArguments[0], this.current, this.parentNode, this.context).resolve(),
-        };
-        return arrayMetaType;
-      }
-
-      if (typeReference.typeName.text === 'Promise' && typeReference.typeArguments && typeReference.typeArguments.length === 1) {
-        return new TypeResolver(typeReference.typeArguments[0], this.current, this.parentNode, this.context).resolve();
-      }
-
-      if (typeReference.typeName.text === 'String') {
-        const stringMetaType: Tsoa.StringType = { dataType: 'string' };
-        return stringMetaType;
-      }
-
-      if (this.context[typeReference.typeName.text]) {
-        return new TypeResolver(this.context[typeReference.typeName.text].type, this.current, this.parentNode, this.context).resolve();
-      }
-    }
-
-    const referenceType = this.getReferenceType(typeReference);
-    return referenceType;
+    throw new GenerateMetadataError(`Unknown type: ${ts.SyntaxKind[this.typeNode.kind]}`, this.typeNode);
   }
 
   private resolveIndexedAccessTypeNode(typeNode: ts.IndexedAccessTypeNode) {
@@ -463,7 +424,7 @@ export class TypeResolver {
       }
       return new TypeResolver(this.current.typeChecker.typeToTypeNode(type, typeNode.objectType, ts.NodeBuilderFlags.NoTruncation)!, this.current, typeNode, this.context).resolve();
     } else if (ts.isLiteralTypeNode(indexType) && (ts.isStringLiteral(indexType.literal) || ts.isNumericLiteral(indexType.literal))) {
-      // Indexed by literal
+      // Indexed by literal foo["key"] or bar[1]
       const hasType = (node: ts.Node | undefined): node is ts.HasType => node !== undefined && Object.prototype.hasOwnProperty.call(node, 'type');
       const objectType = this.current.typeChecker.getTypeFromTypeNode(typeNode.objectType);
       const symbol = this.current.typeChecker.getPropertyOfType(objectType, indexType.literal.text);
@@ -504,32 +465,58 @@ export class TypeResolver {
     throw new GenerateMetadataError(`Unknown type: ${ts.SyntaxKind[typeNode.kind]}`, typeNode);
   }
 
-  private getLiteralValue(typeNode: ts.LiteralTypeNode): string | number | boolean | null {
-    let value: boolean | number | string | null;
-    switch (typeNode.literal.kind) {
-      case ts.SyntaxKind.TrueKeyword:
-        value = true;
-        break;
-      case ts.SyntaxKind.FalseKeyword:
-        value = false;
-        break;
-      case ts.SyntaxKind.StringLiteral:
-        value = typeNode.literal.text;
-        break;
-      case ts.SyntaxKind.NumericLiteral:
-        value = parseFloat(typeNode.literal.text);
-        break;
-      case ts.SyntaxKind.NullKeyword:
-        value = null;
-        break;
-      default:
-        if (Object.prototype.hasOwnProperty.call(typeNode.literal, 'text')) {
-          value = (typeNode.literal as ts.LiteralExpression).text;
-        } else {
-          throw new GenerateMetadataError(`Couldn't resolve literal node: ${typeNode.literal.getText()}`);
-        }
+  private resolveTypeReferencedNode(typeNode: ts.TypeReferenceNode): Tsoa.Type {
+    if (typeNode.typeName.kind === ts.SyntaxKind.Identifier) {
+      switch (typeNode.typeName.text) {
+        case 'Date':
+          return this.getDateType(this.parentNode);
+        case 'Buffer':
+        case 'Readable':
+          const streamMetaType: Tsoa.BufferType = { dataType: 'buffer' };
+          return streamMetaType;
+        case 'String':
+          const stringMetaType: Tsoa.StringType = { dataType: 'string' };
+          return stringMetaType;
+        case 'Array':
+          if (typeNode.typeArguments && typeNode.typeArguments.length === 1) {
+            const arrayMetaType: Tsoa.ArrayType = {
+              dataType: 'array',
+              elementType: new TypeResolver(typeNode.typeArguments[0], this.current, this.parentNode, this.context).resolve(),
+            };
+            return arrayMetaType;
+          }
+          break;
+        case 'Promise':
+          if (typeNode.typeArguments && typeNode.typeArguments.length === 1) {
+            return new TypeResolver(typeNode.typeArguments[0], this.current, this.parentNode, this.context).resolve();
+          }
+          break;
+        default:
+          if (this.context[typeNode.typeName.text]) {
+            return new TypeResolver(this.context[typeNode.typeName.text].type, this.current, this.parentNode, this.context).resolve();
+          }
+          break;
+      }
     }
-    return value;
+
+    const referenceType = this.getReferenceType(typeNode);
+    return referenceType;
+  }
+
+  private getLiteralValue(typeNode: ts.LiteralTypeNode): string | number | boolean | null {
+    const literal = typeNode.literal;
+    switch (literal.kind) {
+      case ts.SyntaxKind.TrueKeyword: return true;
+      case ts.SyntaxKind.FalseKeyword: return false;
+      case ts.SyntaxKind.StringLiteral: return literal.text;
+      case ts.SyntaxKind.NumericLiteral: return parseFloat(literal.text);
+      case ts.SyntaxKind.NullKeyword: return null;
+      default:
+        if (Object.prototype.hasOwnProperty.call(literal, 'text')) {
+          return (literal as ts.LiteralExpression).text;
+        }
+        throw new GenerateMetadataError(`Couldn't resolve literal node: ${literal.getText()}`);
+    }
   }
 
   private getPrimitiveType(typeNode: ts.TypeNode, parentNode?: ts.Node): Tsoa.PrimitiveType | Tsoa.EnumType | undefined {
