@@ -397,59 +397,8 @@ export class TypeResolver {
       return new TypeResolver(this.typeNode.type, this.current, this.typeNode, this.context, this.referencer).resolve();
     }
 
-    // Indexed by keyword
-    if (ts.isIndexedAccessTypeNode(this.typeNode) && (this.typeNode.indexType.kind === ts.SyntaxKind.NumberKeyword || this.typeNode.indexType.kind === ts.SyntaxKind.StringKeyword)) {
-      const numberIndexType = this.typeNode.indexType.kind === ts.SyntaxKind.NumberKeyword;
-      const objectType = this.current.typeChecker.getTypeFromTypeNode(this.typeNode.objectType);
-      const type = numberIndexType ? objectType.getNumberIndexType() : objectType.getStringIndexType();
-      if (type === undefined) {
-        throw new GenerateMetadataError(`Could not determine ${numberIndexType ? 'number' : 'string'} index on ${this.current.typeChecker.typeToString(objectType)}`, this.typeNode);
-      }
-      return new TypeResolver(this.current.typeChecker.typeToTypeNode(type, this.typeNode.objectType, ts.NodeBuilderFlags.NoTruncation)!, this.current, this.typeNode, this.context).resolve();
-    }
-
-    // Indexed by literal
-    if (
-      ts.isIndexedAccessTypeNode(this.typeNode) &&
-      ts.isLiteralTypeNode(this.typeNode.indexType) &&
-      (ts.isStringLiteral(this.typeNode.indexType.literal) || ts.isNumericLiteral(this.typeNode.indexType.literal))
-    ) {
-      const hasType = (node: ts.Node | undefined): node is ts.HasType => node !== undefined && Object.prototype.hasOwnProperty.call(node, 'type');
-      const symbol = this.current.typeChecker.getPropertyOfType(this.current.typeChecker.getTypeFromTypeNode(this.typeNode.objectType), this.typeNode.indexType.literal.text);
-      if (symbol === undefined) {
-        throw new GenerateMetadataError(
-          `Could not determine the keys on ${this.current.typeChecker.typeToString(this.current.typeChecker.getTypeFromTypeNode(this.typeNode.objectType))}`,
-          this.typeNode,
-        );
-      }
-      if (hasType(symbol.valueDeclaration) && symbol.valueDeclaration.type) {
-        return new TypeResolver(symbol.valueDeclaration.type, this.current, this.typeNode, this.context).resolve();
-      }
-      const declaration = this.current.typeChecker.getTypeOfSymbolAtLocation(symbol, this.typeNode.objectType);
-      try {
-        return new TypeResolver(this.current.typeChecker.typeToTypeNode(declaration, this.typeNode.objectType, ts.NodeBuilderFlags.NoTruncation)!, this.current, this.typeNode, this.context).resolve();
-      } catch {
-        throw new GenerateMetadataError(
-          `Could not determine the keys on ${this.current.typeChecker.typeToString(
-            this.current.typeChecker.getTypeFromTypeNode(this.current.typeChecker.typeToTypeNode(declaration, undefined, ts.NodeBuilderFlags.NoTruncation)!),
-          )}`,
-          this.typeNode,
-        );
-      }
-    }
-
-    // Indexed by keyof typeof value
-    if (ts.isIndexedAccessTypeNode(this.typeNode) && ts.isTypeOperatorNode(this.typeNode.indexType) && this.typeNode.indexType.operator === ts.SyntaxKind.KeyOfKeyword) {
-      const resolveParenthesis = (node: ts.TypeNode) => (ts.isParenthesizedTypeNode(node) ? node.type : node);
-      const objectType = resolveParenthesis(this.typeNode.objectType);
-      const indexType = this.typeNode.indexType.type;
-      const isSameTypeQuery = ts.isTypeQueryNode(objectType) && ts.isTypeQueryNode(indexType) && objectType.exprName.getText() === indexType.exprName.getText();
-      const isSameTypeReference = ts.isTypeReferenceNode(objectType) && ts.isTypeReferenceNode(indexType) && objectType.typeName.getText() === indexType.typeName.getText();
-      if (isSameTypeQuery || isSameTypeReference) {
-        const type = this.getReferencer();
-        const node = this.current.typeChecker.typeToTypeNode(type, undefined, ts.NodeBuilderFlags.InTypeAlias | ts.NodeBuilderFlags.NoTruncation)!;
-        return new TypeResolver(node, this.current, this.typeNode, this.context, this.referencer).resolve();
-      }
+    if (ts.isIndexedAccessTypeNode(this.typeNode)) {
+      return this.resolveIndexedAccessTypeNode(this.typeNode);
     }
 
     if (ts.isTemplateLiteralTypeNode(this.typeNode)) {
@@ -514,6 +463,60 @@ export class TypeResolver {
 
     const referenceType = this.getReferenceType(typeReference);
     return referenceType;
+  }
+
+  private resolveIndexedAccessTypeNode(typeNode: ts.IndexedAccessTypeNode) {
+    const indexType = typeNode.indexType;
+
+    if (indexType.kind === ts.SyntaxKind.NumberKeyword || indexType.kind === ts.SyntaxKind.StringKeyword) {
+      // Indexed by keyword
+      const isNumberIndexType = indexType.kind === ts.SyntaxKind.NumberKeyword;
+      const objectType = this.current.typeChecker.getTypeFromTypeNode(typeNode.objectType);
+      const type = isNumberIndexType ? objectType.getNumberIndexType() : objectType.getStringIndexType();
+      if (type === undefined) {
+        throw new GenerateMetadataError(`Could not determine ${isNumberIndexType ? 'number' : 'string'} index on ${this.current.typeChecker.typeToString(objectType)}`, typeNode);
+      }
+      return new TypeResolver(this.current.typeChecker.typeToTypeNode(type, typeNode.objectType, ts.NodeBuilderFlags.NoTruncation)!, this.current, typeNode, this.context).resolve();
+    } else if (ts.isLiteralTypeNode(indexType) && (ts.isStringLiteral(indexType.literal) || ts.isNumericLiteral(indexType.literal))) {
+      // Indexed by literal
+      const hasType = (node: ts.Node | undefined): node is ts.HasType => node !== undefined && Object.prototype.hasOwnProperty.call(node, 'type');
+      const objectType = this.current.typeChecker.getTypeFromTypeNode(typeNode.objectType);
+      const symbol = this.current.typeChecker.getPropertyOfType(objectType, indexType.literal.text);
+      if (symbol === undefined) {
+        throw new GenerateMetadataError(
+          `Could not determine the keys on ${this.current.typeChecker.typeToString(objectType)}`,
+          typeNode,
+        );
+      }
+      if (hasType(symbol.valueDeclaration) && symbol.valueDeclaration.type) {
+        return new TypeResolver(symbol.valueDeclaration.type, this.current, typeNode, this.context).resolve();
+      }
+      const declaration = this.current.typeChecker.getTypeOfSymbolAtLocation(symbol, typeNode.objectType);
+      try {
+        return new TypeResolver(this.current.typeChecker.typeToTypeNode(declaration, typeNode.objectType, ts.NodeBuilderFlags.NoTruncation)!, this.current, typeNode, this.context).resolve();
+      } catch {
+        throw new GenerateMetadataError(
+          `Could not determine the keys on ${this.current.typeChecker.typeToString(
+            this.current.typeChecker.getTypeFromTypeNode(this.current.typeChecker.typeToTypeNode(declaration, undefined, ts.NodeBuilderFlags.NoTruncation)!),
+          )}`,
+          typeNode,
+        );
+      }
+    } else if (ts.isTypeOperatorNode(indexType) && indexType.operator === ts.SyntaxKind.KeyOfKeyword) {
+      // Indexed by keyof typeof value
+      const resolveParenthesis = (node: ts.TypeNode) => (ts.isParenthesizedTypeNode(node) ? node.type : node);
+      const objectType = resolveParenthesis(typeNode.objectType);
+      const innerIndexType = indexType.type;
+      const isSameTypeQuery = ts.isTypeQueryNode(objectType) && ts.isTypeQueryNode(innerIndexType) && objectType.exprName.getText() === innerIndexType.exprName.getText();
+      const isSameTypeReference = ts.isTypeReferenceNode(objectType) && ts.isTypeReferenceNode(innerIndexType) && objectType.typeName.getText() === innerIndexType.typeName.getText();
+      if (isSameTypeQuery || isSameTypeReference) {
+        const type = this.getReferencer();
+        const node = this.current.typeChecker.typeToTypeNode(type, undefined, ts.NodeBuilderFlags.InTypeAlias | ts.NodeBuilderFlags.NoTruncation)!;
+        return new TypeResolver(node, this.current, typeNode, this.context, this.referencer).resolve();
+      }
+    }
+
+    throw new GenerateMetadataError(`Unknown type: ${ts.SyntaxKind[typeNode.kind]}`, typeNode);
   }
 
   private getLiteralValue(typeNode: ts.LiteralTypeNode): string | number | boolean | null {
