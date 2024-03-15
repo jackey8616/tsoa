@@ -47,21 +47,6 @@ export class TypeResolver {
       return primitiveType;
     }
 
-    if (this.typeNode.kind === ts.SyntaxKind.NullKeyword) {
-      const enumType: Tsoa.EnumType = {
-        dataType: 'enum',
-        enums: [null],
-      };
-      return enumType;
-    }
-
-    if (this.typeNode.kind === ts.SyntaxKind.UndefinedKeyword) {
-      const undefinedType: Tsoa.UndefinedType = {
-        dataType: 'undefined',
-      };
-      return undefinedType;
-    }
-
     if (ts.isArrayTypeNode(this.typeNode)) {
       const arrayMetaType: Tsoa.ArrayType = {
         dataType: 'array',
@@ -547,7 +532,7 @@ export class TypeResolver {
     return value;
   }
 
-  private getPrimitiveType(typeNode: ts.TypeNode, parentNode?: ts.Node): Tsoa.PrimitiveType | undefined {
+  private getPrimitiveType(typeNode: ts.TypeNode, parentNode?: ts.Node): Tsoa.PrimitiveType | Tsoa.EnumType | undefined {
     const resolution = this.attemptToResolveKindToPrimitive(typeNode.kind);
     if (!resolution.foundMatch) {
       return;
@@ -580,6 +565,8 @@ export class TypeResolver {
           default:
             return { dataType: defaultNumberType };
         }
+      case 'null':
+        return { dataType: 'enum', enums: [null] };
       case 'string':
       case 'boolean':
       case 'void':
@@ -1127,6 +1114,8 @@ export class TypeResolver {
         return { foundMatch: true, resolvedType: 'boolean' };
       case ts.SyntaxKind.VoidKeyword:
         return { foundMatch: true, resolvedType: 'void' };
+      case ts.SyntaxKind.NullKeyword:
+        return { foundMatch: true, resolvedType: 'null' };
       case ts.SyntaxKind.UndefinedKeyword:
         return { foundMatch: true, resolvedType: 'undefined' };
       default:
@@ -1560,7 +1549,7 @@ export class TypeResolver {
 
 interface ResolvesToPrimitive {
   foundMatch: true;
-  resolvedType: 'number' | 'string' | 'boolean' | 'void' | 'undefined';
+  resolvedType: 'number' | 'string' | 'boolean' | 'void' | 'null' | 'undefined';
 }
 interface DoesNotResolveToPrimitive {
   foundMatch: false;
