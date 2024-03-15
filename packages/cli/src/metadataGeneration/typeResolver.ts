@@ -555,48 +555,38 @@ export class TypeResolver {
 
     const defaultNumberType = this.current.defaultNumberType;
 
-    if (resolution.resolvedType === 'number') {
-      if (!parentNode) {
-        return { dataType: defaultNumberType };
-      }
-
-      const tags = getJSDocTagNames(parentNode).filter(name => {
-        return ['isInt', 'isLong', 'isFloat', 'isDouble'].some(m => m === name);
-      });
-      if (tags.length === 0) {
-        return { dataType: defaultNumberType };
-      }
-
-      switch (tags[0]) {
-        case 'isInt':
-          return { dataType: 'integer' };
-        case 'isLong':
-          return { dataType: 'long' };
-        case 'isFloat':
-          return { dataType: 'float' };
-        case 'isDouble':
-          return { dataType: 'double' };
-        default:
+    switch (resolution.resolvedType) {
+      case 'number':
+        if (!parentNode) {
           return { dataType: defaultNumberType };
-      }
-    } else if (resolution.resolvedType === 'string') {
-      return {
-        dataType: 'string',
-      };
-    } else if (resolution.resolvedType === 'boolean') {
-      return {
-        dataType: 'boolean',
-      };
-    } else if (resolution.resolvedType === 'void') {
-      return {
-        dataType: 'void',
-      };
-    } else if (resolution.resolvedType === 'undefined') {
-      return {
-        dataType: 'undefined',
-      };
-    } else {
-      return assertNever(resolution.resolvedType);
+        }
+
+        const tags = getJSDocTagNames(parentNode).filter(name => {
+          return ['isInt', 'isLong', 'isFloat', 'isDouble'].some(m => m === name);
+        });
+        if (tags.length === 0) {
+          return { dataType: defaultNumberType };
+        }
+
+        switch (tags[0]) {
+          case 'isInt':
+            return { dataType: 'integer' };
+          case 'isLong':
+            return { dataType: 'long' };
+          case 'isFloat':
+            return { dataType: 'float' };
+          case 'isDouble':
+            return { dataType: 'double' };
+          default:
+            return { dataType: defaultNumberType };
+        }
+      case 'string':
+      case 'boolean':
+      case 'void':
+      case 'undefined':
+        return { dataType: resolution.resolvedType };
+      default:
+        return assertNever(resolution.resolvedType);
     }
   }
 
@@ -615,7 +605,6 @@ export class TypeResolver {
       case 'isDate':
         return { dataType: 'date' };
       case 'isDateTime':
-        return { dataType: 'datetime' };
       default:
         return { dataType: 'datetime' };
     }
@@ -1128,36 +1117,20 @@ export class TypeResolver {
     return formattedName;
   }
 
-  private attemptToResolveKindToPrimitive = (syntaxKind: ts.SyntaxKind): ResolvesToPrimitive | DoesNotResolveToPrimitive => {
-    if (syntaxKind === ts.SyntaxKind.NumberKeyword) {
-      return {
-        foundMatch: true,
-        resolvedType: 'number',
-      };
-    } else if (syntaxKind === ts.SyntaxKind.StringKeyword) {
-      return {
-        foundMatch: true,
-        resolvedType: 'string',
-      };
-    } else if (syntaxKind === ts.SyntaxKind.BooleanKeyword) {
-      return {
-        foundMatch: true,
-        resolvedType: 'boolean',
-      };
-    } else if (syntaxKind === ts.SyntaxKind.VoidKeyword) {
-      return {
-        foundMatch: true,
-        resolvedType: 'void',
-      };
-    } else if (syntaxKind === ts.SyntaxKind.UndefinedKeyword) {
-      return {
-        foundMatch: true,
-        resolvedType: 'undefined',
-      };
-    } else {
-      return {
-        foundMatch: false,
-      };
+  private attemptToResolveKindToPrimitive(syntaxKind: ts.SyntaxKind): ResolvesToPrimitive | DoesNotResolveToPrimitive{
+    switch (syntaxKind) {
+      case ts.SyntaxKind.NumberKeyword:
+        return { foundMatch: true, resolvedType: 'number' };
+      case ts.SyntaxKind.StringKeyword:
+        return { foundMatch: true, resolvedType: 'string' };
+      case ts.SyntaxKind.BooleanKeyword:
+        return { foundMatch: true, resolvedType: 'boolean' };
+      case ts.SyntaxKind.VoidKeyword:
+        return { foundMatch: true, resolvedType: 'void' };
+      case ts.SyntaxKind.UndefinedKeyword:
+        return { foundMatch: true, resolvedType: 'undefined' };
+      default:
+        return { foundMatch: false };
     }
   };
 
