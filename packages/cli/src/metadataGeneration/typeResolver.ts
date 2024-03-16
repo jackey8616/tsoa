@@ -356,7 +356,7 @@ export class TypeResolver {
 
   private resolveTypeOperatorNode(typeNode: ts.TypeOperatorNode): Tsoa.Type {
     switch (typeNode.operator) {
-      case ts.SyntaxKind.KeyOfKeyword:
+      case ts.SyntaxKind.KeyOfKeyword: {
         const type = this.current.typeChecker.getTypeFromTypeNode(typeNode);
         const extractLiteral = (typeNode: ts.TypeNode, type: ts.LiteralType): Tsoa.EnumType => {
           if (typeof type.value == 'number' || typeof type.value == 'string') {
@@ -452,6 +452,7 @@ export class TypeResolver {
         }
         const indexedTypeName = this.current.typeChecker.typeToString(this.current.typeChecker.getTypeFromTypeNode(typeNode.type));
         throw new GenerateMetadataError(`Could not determine the keys on ${indexedTypeName}`, typeNode);
+      }
       case ts.SyntaxKind.ReadonlyKeyword:
         return new TypeResolver(typeNode.type, this.current, typeNode, this.context, this.referencer).resolve();
       default:
@@ -466,11 +467,9 @@ export class TypeResolver {
           return this.getDateType(this.parentNode);
         case 'Buffer':
         case 'Readable':
-          const streamMetaType: Tsoa.BufferType = { dataType: 'buffer' };
-          return streamMetaType;
+          return { dataType: 'buffer' };
         case 'String':
-          const stringMetaType: Tsoa.StringType = { dataType: 'string' };
-          return stringMetaType;
+          return { dataType: 'string' };
         case 'Array':
           if (typeNode.typeArguments && typeNode.typeArguments.length === 1) {
             const arrayMetaType: Tsoa.ArrayType = {
@@ -522,7 +521,7 @@ export class TypeResolver {
     const defaultNumberType = this.current.defaultNumberType;
 
     switch (resolution.resolvedType) {
-      case 'number':
+      case 'number': {
         if (!parentNode) {
           return { dataType: defaultNumberType };
         }
@@ -546,6 +545,7 @@ export class TypeResolver {
           default:
             return { dataType: defaultNumberType };
         }
+      }
       case 'null':
         return { dataType: 'enum', enums: [null] };
       case 'string':
@@ -1195,7 +1195,7 @@ export class TypeResolver {
     const classConstructor = node.members.find(member => ts.isConstructorDeclaration(member)) as ts.ConstructorDeclaration;
 
     if (classConstructor && classConstructor.parameters) {
-      const constructorProperties = classConstructor.parameters.filter(this.isAccessibleParameter);
+      const constructorProperties = classConstructor.parameters.filter((value) => this.isAccessibleParameter(value));
 
       properties.push(...constructorProperties);
     }
