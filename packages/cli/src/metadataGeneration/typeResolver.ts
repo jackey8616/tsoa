@@ -266,118 +266,9 @@ export class TypeResolver {
       return new TypeResolver(resolvedNode, this.current, this.typeNode, this.context, referencer).resolve();
     }
 
-    // keyof
-    if (ts.isTypeOperatorNode(this.typeNode) && this.typeNode.operator === ts.SyntaxKind.KeyOfKeyword) {
-      const type = this.current.typeChecker.getTypeFromTypeNode(this.typeNode);
-      if (type.isIndexType()) {
-        // in case of generic: keyof T. Not handles all possible cases
-        const symbol = type.type.getSymbol();
-        if (symbol && symbol.getFlags() & ts.TypeFlags.TypeParameter) {
-          const typeName = symbol.getEscapedName();
-          if (typeof typeName !== 'string') {
-            throw new GenerateMetadataError(`typeName is not string, but ${typeof typeName}`, this.typeNode);
-          }
-          if (this.context[typeName]) {
-            const subResult = new TypeResolver(this.context[typeName].type, this.current, this.parentNode, this.context).resolve();
-            if (subResult.dataType === 'any') {
-              return {
-                dataType: 'union',
-                types: [{ dataType: 'string' }, { dataType: 'double' }],
-              };
-            }
-            const properties = (subResult as Tsoa.RefObjectType).properties?.map(v => v.name);
-            if (properties) {
-              return {
-                dataType: 'enum',
-                enums: properties,
-              };
-            } else {
-              throw new GenerateMetadataError(`TypeOperator 'keyof' on node which have no properties`, this.context[typeName].type);
-            }
-          }
-        }
-      } else if (type.isUnion()) {
-        const literals = type.types.filter((t): t is ts.LiteralType => t.isLiteral());
-        const literalValues: Array<string | number> = [];
-        for (const literal of literals) {
-          if (typeof literal.value == 'number' || typeof literal.value == 'string') {
-            literalValues.push(literal.value);
-          } else {
-            throw new GenerateMetadataError(`Not handled key Type, maybe ts.PseudoBigInt ${this.current.typeChecker.typeToString(literal)}`, this.typeNode);
-          }
-        }
-
-        if (
-          !literals.length &&
-          type.types.length === 3 &&
-          type.types.some(t => t.flags === ts.TypeFlags.String) &&
-          type.types.some(t => t.flags === ts.TypeFlags.Number) &&
-          type.types.some(t => t.flags === ts.TypeFlags.ESSymbol)
-        ) {
-          //keyof any
-          return {
-            dataType: 'union',
-            types: [{ dataType: 'string' }, { dataType: 'double' }],
-          };
-        }
-
-        if (!literals.length && type.types.length === 2 && type.types.some(t => t.flags === ts.TypeFlags.Number) && type.types.some(t => t.flags === ts.TypeFlags.String)) {
-          return {
-            dataType: 'union',
-            types: [{ dataType: 'string' }, { dataType: 'double' }],
-          };
-        }
-
-        // Warn on nonsense (`number`, `typeof Symbol.iterator`)
-        if (type.types.find(t => !t.isLiteral()) !== undefined) {
-          const problems = type.types.filter(t => !t.isLiteral()).map(t => this.current.typeChecker.typeToString(t));
-          console.warn(new GenerateMetaDataWarning(`Skipped non-literal type(s) ${problems.join(', ')}`, this.typeNode).toString());
-        }
-
-        const stringMembers = literalValues.filter(v => typeof v == 'string');
-        const numberMembers = literalValues.filter(v => typeof v == 'number');
-        if (stringMembers.length && numberMembers.length) {
-          return {
-            dataType: 'union',
-            types: [
-              { dataType: 'enum', enums: stringMembers },
-              { dataType: 'enum', enums: numberMembers },
-            ],
-          };
-        }
-        return {
-          dataType: 'enum',
-          enums: literalValues,
-        };
-      } else if (type.isLiteral()) {
-        if (typeof type.value == 'number' || typeof type.value == 'string') {
-          return {
-            dataType: 'enum',
-            enums: [type.value],
-          };
-        } else {
-          throw new GenerateMetadataError(`Not handled indexType, maybe ts.PseudoBigInt ${this.current.typeChecker.typeToString(type)}`, this.typeNode);
-        }
-      } else if ((type.getFlags() & ts.TypeFlags.Never) !== 0) {
-        throw new GenerateMetadataError(`TypeOperator 'keyof' on node produced a never type`, this.typeNode);
-      } else if ((type.getFlags() & ts.TypeFlags.TemplateLiteral) !== 0) {
-        //Now assumes template literals as string
-        console.warn(new GenerateMetaDataWarning(`Template literals are assumed as strings`, this.typeNode).toString());
-        return {
-          dataType: 'string',
-        };
-      } else if ((type.getFlags() & ts.TypeFlags.Number) !== 0) {
-        return {
-          dataType: 'double',
-        };
-      }
-      const indexedTypeName = this.current.typeChecker.typeToString(this.current.typeChecker.getTypeFromTypeNode(this.typeNode.type));
-      throw new GenerateMetadataError(`Could not determine the keys on ${indexedTypeName}`, this.typeNode);
-    }
-
-    // Handle `readonly` arrays
-    if (ts.isTypeOperatorNode(this.typeNode) && this.typeNode.operator === ts.SyntaxKind.ReadonlyKeyword) {
-      return new TypeResolver(this.typeNode.type, this.current, this.typeNode, this.context, this.referencer).resolve();
+    // keyof, readonly, typeof
+    if (ts.isTypeOperatorNode(this.typeNode)) {
+      return this.resolveTypeOperatorNode(this.typeNode);
     }
 
     if (ts.isIndexedAccessTypeNode(this.typeNode)) {
@@ -461,6 +352,111 @@ export class TypeResolver {
     }
 
     throw new GenerateMetadataError(`Unknown type: ${ts.SyntaxKind[typeNode.kind]}`, typeNode);
+  }
+
+  private resolveTypeOperatorNode(typeNode: ts.TypeOperatorNode): Tsoa.Type {
+    switch (typeNode.operator) {
+      case ts.SyntaxKind.KeyOfKeyword:
+        const type = this.current.typeChecker.getTypeFromTypeNode(typeNode);
+        const extractLiteral = (typeNode: ts.TypeNode, type: ts.LiteralType): Tsoa.EnumType => {
+          if (typeof type.value == 'number' || typeof type.value == 'string') {
+            return {
+              dataType: 'enum',
+              enums: [type.value],
+            };
+          }
+          throw new GenerateMetadataError(`Not handled indexType, maybe ts.PseudoBigInt ${this.current.typeChecker.typeToString(type)}`, typeNode);
+        };
+        if (type.isIndexType()) {
+          // in case of generic: keyof T. Not handles all possible cases
+          const symbol = type.type.getSymbol();
+          if (symbol && symbol.getFlags() & ts.TypeFlags.TypeParameter) {
+            const typeName = symbol.getEscapedName();
+            if (typeof typeName !== 'string') {
+              throw new GenerateMetadataError(`typeName is not string, but ${typeof typeName}`, typeNode);
+            }
+            if (this.context[typeName]) {
+              const subResult = new TypeResolver(this.context[typeName].type, this.current, this.parentNode, this.context).resolve();
+              if (subResult.dataType === 'any') {
+                return {
+                  dataType: 'union',
+                  types: [{ dataType: 'string' }, { dataType: 'double' }],
+                };
+              }
+              const properties = (subResult as Tsoa.RefObjectType).properties?.map(v => v.name);
+              if (properties) {
+                return {
+                  dataType: 'enum',
+                  enums: properties,
+                };
+              }
+              throw new GenerateMetadataError(`TypeOperator 'keyof' on node which have no properties`, this.context[typeName].type);
+            }
+          }
+        } else if (type.isUnion()) {
+          const literals = type.types.filter((t): t is ts.LiteralType => t.isLiteral());
+          const literalValues: Array<string | number> = literals.map((each) => extractLiteral(typeNode, each).enums[0] as string | number);
+
+          if (
+            !literals.length &&
+            type.types.length === 3 &&
+            type.types.some(t => t.flags === ts.TypeFlags.String) &&
+            type.types.some(t => t.flags === ts.TypeFlags.Number) &&
+            type.types.some(t => t.flags === ts.TypeFlags.ESSymbol)
+          ) {
+            //keyof any
+            return {
+              dataType: 'union',
+              types: [{ dataType: 'string' }, { dataType: 'double' }],
+            };
+          }
+
+          if (!literals.length && type.types.length === 2 && type.types.some(t => t.flags === ts.TypeFlags.Number) && type.types.some(t => t.flags === ts.TypeFlags.String)) {
+            return {
+              dataType: 'union',
+              types: [{ dataType: 'string' }, { dataType: 'double' }],
+            };
+          }
+
+          // Warn on nonsense (`number`, `typeof Symbol.iterator`)
+          if (type.types.find(t => !t.isLiteral()) !== undefined) {
+            const problems = type.types.filter(t => !t.isLiteral()).map(t => this.current.typeChecker.typeToString(t));
+            console.warn(new GenerateMetaDataWarning(`Skipped non-literal type(s) ${problems.join(', ')}`, typeNode).toString());
+          }
+
+          const stringMembers = literalValues.filter(v => typeof v == 'string');
+          const numberMembers = literalValues.filter(v => typeof v == 'number');
+          if (stringMembers.length && numberMembers.length) {
+            return {
+              dataType: 'union',
+              types: [
+                { dataType: 'enum', enums: stringMembers },
+                { dataType: 'enum', enums: numberMembers },
+              ],
+            };
+          }
+          return {
+            dataType: 'enum',
+            enums: literalValues,
+          };
+        } else if (type.isLiteral()) {
+          return extractLiteral(typeNode, type);
+        } else if ((type.getFlags() & ts.TypeFlags.Never) !== 0) {
+          throw new GenerateMetadataError(`TypeOperator 'keyof' on node produced a never type`, typeNode);
+        } else if ((type.getFlags() & ts.TypeFlags.TemplateLiteral) !== 0) {
+          //Now assumes template literals as string
+          console.warn(new GenerateMetaDataWarning(`Template literals are assumed as strings`, typeNode).toString());
+          return { dataType: 'string' };
+        } else if ((type.getFlags() & ts.TypeFlags.Number) !== 0) {
+          return { dataType: 'double' };
+        }
+        const indexedTypeName = this.current.typeChecker.typeToString(this.current.typeChecker.getTypeFromTypeNode(typeNode.type));
+        throw new GenerateMetadataError(`Could not determine the keys on ${indexedTypeName}`, typeNode);
+      case ts.SyntaxKind.ReadonlyKeyword:
+        return new TypeResolver(typeNode.type, this.current, typeNode, this.context, this.referencer).resolve();
+      default:
+        throw new GenerateMetadataError(`Unknown TypeOperationNode type: ${ts.SyntaxKind[typeNode.kind]}`, typeNode);
+    }
   }
 
   private resolveTypeReferencedNode(typeNode: ts.TypeReferenceNode): Tsoa.Type {
