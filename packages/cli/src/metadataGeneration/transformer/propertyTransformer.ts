@@ -1,5 +1,5 @@
 import type { Token, InterfaceDeclaration, ClassDeclaration, PropertyDeclaration, ParameterDeclaration, ConstructorDeclaration, TypeElement, ClassElement, PropertySignature } from 'typescript';
-import { NodeFlags, NodeBuilderFlags, SyntaxKind, isInterfaceDeclaration, isPropertyDeclaration, isConstructorDeclaration, isPropertySignature } from 'typescript';
+import { NodeFlags, NodeBuilderFlags, SyntaxKind, isInterfaceDeclaration, isPropertyDeclaration, isConstructorDeclaration, isPropertySignature, isJSDocDeprecatedTag } from 'typescript';
 import { Tsoa } from '@tsoa/runtime';
 
 import { Transformer } from './transformer';
@@ -67,7 +67,7 @@ export class PropertyTransformer extends Transformer {
       required,
       type: new TypeResolver(propertySignature.type, resolver.current, propertySignature.type.parent, resolver.context).resolve(),
       validators: getPropertyValidators(propertySignature) || {},
-      deprecated: isExistJSDocTag(propertySignature, tag => tag.tagName.text === 'deprecated'),
+      deprecated: isExistJSDocTag(propertySignature, tag => isJSDocDeprecatedTag(tag)),
       extensions: resolver.getNodeExtension(propertySignature),
     };
     return property;
@@ -106,7 +106,7 @@ export class PropertyTransformer extends Transformer {
       type,
       validators: getPropertyValidators(propertyDeclaration) || {},
       // class properties and constructor parameters may be deprecated either via jsdoc annotation or decorator
-      deprecated: isExistJSDocTag(propertyDeclaration, tag => tag.tagName.text === 'deprecated') || isDecorator(propertyDeclaration, identifier => identifier.text === 'Deprecated'),
+      deprecated: isExistJSDocTag(propertyDeclaration, tag => isJSDocDeprecatedTag(tag)) || isDecorator(propertyDeclaration, identifier => identifier.text === 'Deprecated'),
       extensions: resolver.getNodeExtension(propertyDeclaration),
     };
     return property;

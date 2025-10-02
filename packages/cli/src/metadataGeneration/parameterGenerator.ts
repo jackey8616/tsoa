@@ -432,7 +432,7 @@ export class ParameterGenerator {
   }
 
   private getParameterDeprecation(node: ts.ParameterDeclaration) {
-    return isExistJSDocTag(node, tag => tag.tagName.text === 'deprecated') || isDecorator(node, identifier => identifier.text === 'Deprecated');
+    return isExistJSDocTag(node, tag => ts.isJSDocDeprecatedTag(tag)) || isDecorator(node, identifier => identifier.text === 'Deprecated');
   }
 
   private getParameterExample(node: ts.ParameterDeclaration, parameterName: string) {

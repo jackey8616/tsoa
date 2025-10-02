@@ -285,7 +285,7 @@ export class MethodGenerator {
   }
 
   private getIsDeprecated() {
-    if (isExistJSDocTag(this.node, tag => tag.tagName.text === 'deprecated')) {
+    if (isExistJSDocTag(this.node, tag => ts.isJSDocDeprecatedTag(tag))) {
       return true;
     }
     const depDecorators = this.getDecoratorsByIdentifier(this.node, 'Deprecated');

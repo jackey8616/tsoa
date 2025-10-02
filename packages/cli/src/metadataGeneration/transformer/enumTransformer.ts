@@ -1,5 +1,5 @@
 import type { Node, EnumDeclaration, EnumMember } from 'typescript';
-import { isEnumDeclaration, isEnumMember } from 'typescript';
+import { isEnumDeclaration, isEnumMember, isJSDocDeprecatedTag } from 'typescript';
 import { Tsoa } from '@tsoa/runtime';
 
 import { Transformer } from './transformer';
@@ -62,7 +62,7 @@ export class EnumTransformer extends Transformer {
       enums,
       enumVarnames,
       refName: enumName,
-      deprecated: isExistJSDocTag(declaration, tag => tag.tagName.text === 'deprecated'),
+      deprecated: isExistJSDocTag(declaration, tag => isJSDocDeprecatedTag(tag)),
     };
   }
 
@@ -72,7 +72,7 @@ export class EnumTransformer extends Transformer {
       refName: enumName,
       enums: [resolver.current.typeChecker.getConstantValue(declaration)!],
       enumVarnames: [declaration.name.getText()],
-      deprecated: isExistJSDocTag(declaration, tag => tag.tagName.text === 'deprecated'),
+      deprecated: isExistJSDocTag(declaration, tag => isJSDocDeprecatedTag(tag)),
     };
   }
 }

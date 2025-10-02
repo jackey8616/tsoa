@@ -116,7 +116,7 @@ export class TypeResolver {
           required: !propertySignature.questionToken,
           type,
           validators: getPropertyValidators(propertySignature) || {},
-          deprecated: isExistJSDocTag(propertySignature, tag => tag.tagName.text === 'deprecated'),
+          deprecated: isExistJSDocTag(propertySignature, tag => ts.isJSDocDeprecatedTag(tag)),
           extensions: this.getNodeExtension(propertySignature),
         };
 
@@ -212,7 +212,7 @@ export class TypeResolver {
               return {
                 name: property.getName(),
                 required,
-                deprecated: parent ? isExistJSDocTag(parent, tag => tag.tagName.text === 'deprecated') || isDecorator(parent, identifier => identifier.text === 'Deprecated') : false,
+                deprecated: parent ? isExistJSDocTag(parent, tag => ts.isJSDocDeprecatedTag(tag)) || isDecorator(parent, identifier => identifier.text === 'Deprecated') : false,
                 type,
                 default: def,
                 // validators are disjunct via types, so it is now OK.
@@ -626,7 +626,7 @@ export class TypeResolver {
 
   private calcMemberJsDocProperties(arg: ts.PropertySignature): string {
     const def = TypeResolver.getDefault(arg);
-    const isDeprecated = isExistJSDocTag(arg, tag => tag.tagName.text === 'deprecated') || isDecorator(arg, identifier => identifier.text === 'Deprecated');
+    const isDeprecated = isExistJSDocTag(arg, tag => ts.isJSDocDeprecatedTag(tag)) || isDecorator(arg, identifier => identifier.text === 'Deprecated');
 
     const symbol = this.getSymbolAtLocation(arg.name as ts.Node);
     const comments = symbol ? symbol.getDocumentationComment(this.current.typeChecker) : [];
@@ -827,7 +827,7 @@ export class TypeResolver {
   private getModelReference(modelType: ts.InterfaceDeclaration | ts.ClassDeclaration, refTypeName: string) {
     const example = this.getNodeExample(modelType);
     const description = this.getNodeDescription(modelType);
-    const deprecated = isExistJSDocTag(modelType, tag => tag.tagName.text === 'deprecated') || isDecorator(modelType, identifier => identifier.text === 'Deprecated');
+    const deprecated = isExistJSDocTag(modelType, tag => ts.isJSDocDeprecatedTag(tag)) || isDecorator(modelType, identifier => identifier.text === 'Deprecated');
 
     // Handle toJSON methods
     throwUnless(modelType.name, new GenerateMetadataError("Can't get Symbol from anonymous class", modelType));
